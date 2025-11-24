@@ -10,6 +10,7 @@ import (
 	"github.com/TwiN/gatus/v5/alerting/alert"
 	"github.com/TwiN/gatus/v5/client"
 	"github.com/TwiN/gatus/v5/config/endpoint"
+	"github.com/google/uuid"
 	gomail "gopkg.in/mail.v2"
 	"gopkg.in/yaml.v3"
 )
@@ -17,17 +18,19 @@ import (
 var (
 	ErrDuplicateGroupOverride = errors.New("duplicate group override")
 	ErrMissingFromOrToFields  = errors.New("from and to fields are required")
+	ErrMissingSenderDomain    = errors.New("sender domain is required")
 	ErrInvalidPort            = errors.New("port must be between 1 and 65535 inclusively")
 	ErrMissingHost            = errors.New("host is required")
 )
 
 type Config struct {
-	From     string `yaml:"from"`
-	Username string `yaml:"username"`
-	Password string `yaml:"password"`
-	Host     string `yaml:"host"`
-	Port     int    `yaml:"port"`
-	To       string `yaml:"to"`
+	From         string `yaml:"from"`
+	SenderDomain string `yaml:"sender_domain"`
+	Username     string `yaml:"username"`
+	Password     string `yaml:"password"`
+	Host         string `yaml:"host"`
+	Port         int    `yaml:"port"`
+	To           string `yaml:"to"`
 
 	// ClientConfig is the configuration of the client used to communicate with the provider's target
 	ClientConfig *client.Config `yaml:"client,omitempty"`
@@ -43,6 +46,19 @@ func (cfg *Config) Validate() error {
 	if len(cfg.Host) == 0 {
 		return ErrMissingHost
 	}
+
+	// validate sender domain is set or can be extracted
+	// from the sender/from address
+	if len(cfg.SenderDomain) == 0 {
+		fromParts := strings.Split(cfg.From, `@`)
+
+		if len(fromParts) != 2 {
+			return ErrMissingSenderDomain
+		}
+
+		cfg.SenderDomain = fromParts[1]
+	}
+
 	return nil
 }
 
@@ -52,6 +68,9 @@ func (cfg *Config) Merge(override *Config) {
 	}
 	if len(override.From) > 0 {
 		cfg.From = override.From
+	}
+	if len(override.SenderDomain) > 0 {
+		cfg.SenderDomain = override.SenderDomain
 	}
 	if len(override.Username) > 0 {
 		cfg.Username = override.Username
@@ -117,6 +136,7 @@ func (provider *AlertProvider) Send(ep *endpoint.Endpoint, alert *alert.Alert, r
 	m := gomail.NewMessage()
 	m.SetHeader("From", cfg.From)
 	m.SetHeader("To", strings.Split(cfg.To, ",")...)
+	m.SetHeader("Message-ID", fmt.Sprintf("<%s@%s>", uuid.New().String(), cfg.SenderDomain))
 	m.SetHeader("Subject", subject)
 	m.SetBody("text/plain", body)
 	var d *gomail.Dialer

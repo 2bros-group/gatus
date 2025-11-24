@@ -12,7 +12,7 @@ func TestAlertProvider_Validate(t *testing.T) {
 	if err := invalidProvider.Validate(); err == nil {
 		t.Error("provider shouldn't have been valid")
 	}
-	validProvider := AlertProvider{DefaultConfig: Config{From: "from@example.com", Password: "password", Host: "smtp.gmail.com", Port: 587, To: "to@example.com"}}
+	validProvider := AlertProvider{DefaultConfig: Config{From: "from@example.com", SenderDomain: "example.com", Password: "password", Host: "smtp.gmail.com", Port: 587, To: "to@example.com"}}
 	if err := validProvider.Validate(); err != nil {
 		t.Error("provider should've been valid")
 	}
@@ -22,6 +22,20 @@ func TestAlertProvider_ValidateWithNoCredentials(t *testing.T) {
 	validProvider := AlertProvider{DefaultConfig: Config{From: "from@example.com", Host: "smtp-relay.gmail.com", Port: 587, To: "to@example.com"}}
 	if err := validProvider.Validate(); err != nil {
 		t.Error("provider should've been valid")
+	}
+}
+
+func TestAlertProvider_ValidateWithSenderDomainExtractableFromSender(t *testing.T) {
+	validProvider := AlertProvider{DefaultConfig: Config{From: "from@example.com", Host: "smtp-relay.gmail.com", Port: 587, To: "to@example.com"}}
+	if err := validProvider.Validate(); err != nil {
+		t.Error("provider should've been valid")
+	}
+}
+
+func TestAlertProvider_ValidateWithNoExtractableSenderDomain(t *testing.T) {
+	invalidProvider := AlertProvider{DefaultConfig: Config{From: "from", Host: "smtp-relay.gmail.com", Port: 587, To: "to@example.com"}}
+	if err := invalidProvider.Validate(); err == nil {
+		t.Error("provider shouldn't have been valid: sender domain missing and should not have been set from sender address")
 	}
 }
 
@@ -58,7 +72,7 @@ func TestAlertProvider_ValidateWithOverride(t *testing.T) {
 		},
 		Overrides: []Override{
 			{
-				Config: Config{To: "to@example.com"},
+				Config: Config{SenderDomain: "example.local", To: "to@example.com"},
 				Group:  "group",
 			},
 		},
@@ -169,27 +183,37 @@ func TestAlertProvider_GetConfig(t *testing.T) {
 		{
 			Name: "provider-no-override-specify-no-group-should-default",
 			Provider: AlertProvider{
+				DefaultConfig: Config{From: "from@example.com", SenderDomain: "example.com", To: "to@example.com", Host: "smtp.gmail.com", Port: 587, Password: "password"},
+				Overrides:     nil,
+			},
+			InputGroup:     "",
+			InputAlert:     alert.Alert{},
+			ExpectedOutput: Config{From: "from@example.com", SenderDomain: "example.com", To: "to@example.com", Host: "smtp.gmail.com", Port: 587, Password: "password"},
+		},
+		{
+			Name: "provider-no-override-specify-no-group-no-sender-domain-should-default",
+			Provider: AlertProvider{
 				DefaultConfig: Config{From: "from@example.com", To: "to@example.com", Host: "smtp.gmail.com", Port: 587, Password: "password"},
 				Overrides:     nil,
 			},
 			InputGroup:     "",
 			InputAlert:     alert.Alert{},
-			ExpectedOutput: Config{From: "from@example.com", To: "to@example.com", Host: "smtp.gmail.com", Port: 587, Password: "password"},
+			ExpectedOutput: Config{From: "from@example.com", SenderDomain: "example.com", To: "to@example.com", Host: "smtp.gmail.com", Port: 587, Password: "password"},
 		},
 		{
 			Name: "provider-no-override-specify-group-should-default",
 			Provider: AlertProvider{
-				DefaultConfig: Config{From: "from@example.com", To: "to@example.com", Host: "smtp.gmail.com", Port: 587, Password: "password"},
+				DefaultConfig: Config{From: "from@example.com", SenderDomain: "example.com", To: "to@example.com", Host: "smtp.gmail.com", Port: 587, Password: "password"},
 				Overrides:     nil,
 			},
 			InputGroup:     "group",
 			InputAlert:     alert.Alert{},
-			ExpectedOutput: Config{From: "from@example.com", To: "to@example.com", Host: "smtp.gmail.com", Port: 587, Password: "password"},
+			ExpectedOutput: Config{From: "from@example.com", SenderDomain: "example.com", To: "to@example.com", Host: "smtp.gmail.com", Port: 587, Password: "password"},
 		},
 		{
 			Name: "provider-with-override-specify-no-group-should-default",
 			Provider: AlertProvider{
-				DefaultConfig: Config{From: "from@example.com", To: "to@example.com", Host: "smtp.gmail.com", Port: 587, Password: "password"},
+				DefaultConfig: Config{From: "from@example.com", SenderDomain: "example.com", To: "to@example.com", Host: "smtp.gmail.com", Port: 587, Password: "password"},
 				Overrides: []Override{
 					{
 						Group:  "group",
@@ -199,12 +223,12 @@ func TestAlertProvider_GetConfig(t *testing.T) {
 			},
 			InputGroup:     "",
 			InputAlert:     alert.Alert{},
-			ExpectedOutput: Config{From: "from@example.com", To: "to@example.com", Host: "smtp.gmail.com", Port: 587, Password: "password"},
+			ExpectedOutput: Config{From: "from@example.com", SenderDomain: "example.com", To: "to@example.com", Host: "smtp.gmail.com", Port: 587, Password: "password"},
 		},
 		{
 			Name: "provider-with-override-specify-group-should-override",
 			Provider: AlertProvider{
-				DefaultConfig: Config{From: "from@example.com", To: "to@example.com", Host: "smtp.gmail.com", Port: 587, Password: "password"},
+				DefaultConfig: Config{From: "from@example.com", SenderDomain: "example.com", To: "to@example.com", Host: "smtp.gmail.com", Port: 587, Password: "password"},
 				Overrides: []Override{
 					{
 						Group:  "group",
@@ -214,12 +238,12 @@ func TestAlertProvider_GetConfig(t *testing.T) {
 			},
 			InputGroup:     "group",
 			InputAlert:     alert.Alert{},
-			ExpectedOutput: Config{From: "from@example.com", To: "group-to@example.com", Host: "smtp.gmail.com", Port: 587, Password: "password"},
+			ExpectedOutput: Config{From: "from@example.com", SenderDomain: "example.com", To: "group-to@example.com", Host: "smtp.gmail.com", Port: 587, Password: "password"},
 		},
 		{
 			Name: "provider-with-group-override-and-alert-override--alert-override-should-take-precedence",
 			Provider: AlertProvider{
-				DefaultConfig: Config{From: "from@example.com", To: "to@example.com", Host: "smtp.gmail.com", Port: 587, Password: "password"},
+				DefaultConfig: Config{From: "from@example.com", SenderDomain: "example.com", To: "to@example.com", Host: "smtp.gmail.com", Port: 587, Password: "password"},
 				Overrides: []Override{
 					{
 						Group:  "group",
@@ -229,7 +253,7 @@ func TestAlertProvider_GetConfig(t *testing.T) {
 			},
 			InputGroup:     "group",
 			InputAlert:     alert.Alert{ProviderOverride: map[string]any{"to": "alert-to@example.com", "host": "smtp.example.com", "port": 588, "password": "hunter2"}},
-			ExpectedOutput: Config{From: "from@example.com", To: "alert-to@example.com", Host: "smtp.example.com", Port: 588, Password: "hunter2"},
+			ExpectedOutput: Config{From: "from@example.com", SenderDomain: "example.com", To: "alert-to@example.com", Host: "smtp.example.com", Port: 588, Password: "hunter2"},
 		},
 	}
 	for _, scenario := range scenarios {
@@ -240,6 +264,9 @@ func TestAlertProvider_GetConfig(t *testing.T) {
 			}
 			if got.From != scenario.ExpectedOutput.From {
 				t.Errorf("expected from to be %s, got %s", scenario.ExpectedOutput.From, got.From)
+			}
+			if got.SenderDomain != scenario.ExpectedOutput.SenderDomain {
+				t.Errorf("expected sender domain to be %s, got %s", scenario.ExpectedOutput.SenderDomain, got.SenderDomain)
 			}
 			if got.To != scenario.ExpectedOutput.To {
 				t.Errorf("expected to be %s, got %s", scenario.ExpectedOutput.To, got.To)
